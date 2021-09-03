@@ -8,3 +8,6 @@ edition = "2018"
 members = ["rocketmq-client-sys"]
 
 [dependencies]
+rocketmq-client-sys = { path = "rocketmq-client-sys" }
+
+thiserror = "1.0.28"
