@@ -37,6 +37,20 @@ impl Producer {
 }
 
 impl Producer {
+    pub fn start(&self) -> Result<(), ProducerError> {
+        ProducerError::check(unsafe {
+            StartProducer(self.ptr)
+        })
+    }
+
+    pub fn shutdown(&self) -> Result<(), ProducerError> {
+        ProducerError::check(unsafe {
+            ShutdownProducer(self.ptr)
+        })
+    }
+}
+
+impl Producer {
     pub fn send(&self, msg: Message) -> Result<SendResult, ProducerError> {
         let msg = msg.to_c()?;
         let mut sr = unsafe { std::mem::zeroed() };
@@ -98,6 +112,7 @@ impl Producer {
 impl Drop for Producer {
     fn drop(&mut self) {
         if !self.ptr.is_null() {
+            self.shutdown().unwrap();
             ProducerError::check(unsafe { DestroyProducer(self.ptr) }).unwrap();
         }
     }
