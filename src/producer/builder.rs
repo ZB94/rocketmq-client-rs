@@ -3,8 +3,8 @@ use std::ffi::CString;
 use rocketmq_client_sys::*;
 
 use crate::LogLevel;
+use crate::producer::{Producer, ProducerType};
 use crate::producer::error::ProducerError;
-use crate::producer::{ProducerType, Producer};
 
 pub struct ProducerBuilder {
     group: String,
@@ -37,7 +37,7 @@ impl ProducerBuilder {
         }
     }
 
-    pub fn build(self) -> Result<Producer, ProducerError> {
+    pub fn start(self) -> Result<Producer, ProducerError> {
         let group = CString::new(self.group.as_str())?;
         let ty = self.ty.unwrap_or_default();
         let ptr = match ty {
@@ -61,15 +61,15 @@ impl ProducerBuilder {
             ProducerError::check(unsafe { SetProducerInstanceName(p.ptr, name.as_ptr()) })?;
         }
 
-        if let Some((access_key, secure_key, ons_channel)) = self.session_credentials {
+        if let Some((access_key, secret, ons_channel)) = self.session_credentials {
             let access_key = CString::new(access_key.as_str())?;
-            let secure_key = CString::new(secure_key.as_str())?;
+            let secret_key = CString::new(secret.as_str())?;
             let ons_channel = CString::new(ons_channel.as_str())?;
 
             ProducerError::check(unsafe {
                 SetProducerSessionCredentials(
                     p.ptr,
-                    access_key.as_ptr(), secure_key.as_ptr(), ons_channel.as_ptr())
+                    access_key.as_ptr(), secret_key.as_ptr(), ons_channel.as_ptr())
             })?;
         }
 
@@ -102,6 +102,8 @@ impl ProducerBuilder {
         };
         ProducerError::check(unsafe { SetProducerMessageTrace(p.ptr, t) })?;
 
+        ProducerError::check(unsafe { StartProducer(p.ptr) })?;
+
         Ok(p)
     }
 
@@ -130,8 +132,8 @@ impl ProducerBuilder {
         self
     }
 
-    pub fn session_credentials(mut self, access_key: &str, secure_key: &str, ons_channel: &str) -> Self {
-        self.session_credentials = Some((access_key.to_string(), secure_key.to_string(), ons_channel.to_string()));
+    pub fn session_credentials(mut self, access_key: &str, secret_key: &str, ons_channel: &str) -> Self {
+        self.session_credentials = Some((access_key.to_string(), secret_key.to_string(), ons_channel.to_string()));
         self
     }
 

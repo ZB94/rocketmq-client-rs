@@ -5,8 +5,8 @@ use error::ProducerError;
 use rocketmq_client_sys::*;
 pub use send_result::{SendResult, SendStatus};
 
-use crate::LogLevel;
 use crate::message::Message;
+use crate::utils::from_c_str;
 
 mod send_result;
 mod builder;
@@ -34,16 +34,14 @@ impl Producer {
     pub fn new(group: &str) -> ProducerBuilder {
         ProducerBuilder::new(group)
     }
+
+    pub fn version(self) -> String {
+        from_c_str(unsafe { ShowProducerVersion(self.ptr) }).unwrap_or_default()
+    }
 }
 
 impl Producer {
-    pub fn start(&self) -> Result<(), ProducerError> {
-        ProducerError::check(unsafe {
-            StartProducer(self.ptr)
-        })
-    }
-
-    pub fn shutdown(&self) -> Result<(), ProducerError> {
+    fn shutdown(&self) -> Result<(), ProducerError> {
         ProducerError::check(unsafe {
             ShutdownProducer(self.ptr)
         })
@@ -87,6 +85,7 @@ impl Producer {
 }
 
 impl Producer {
+    /// **警告：** 该方法有可能发生内存泄露
     pub fn send_async<F: FnOnce(Result<SendResult, ProducerError>)>(&self, msg: Message, callback: F) -> Result<(), ProducerError> {
         let msg = msg.to_c()?;
         let cb = Box::into_raw(Box::new(Box::new(callback)));
@@ -112,7 +111,7 @@ impl Producer {
 impl Drop for Producer {
     fn drop(&mut self) {
         if !self.ptr.is_null() {
-            self.shutdown().unwrap();
+            let _ = self.shutdown();
             ProducerError::check(unsafe { DestroyProducer(self.ptr) }).unwrap();
         }
     }

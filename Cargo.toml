@@ -10,4 +10,6 @@ members = ["rocketmq-client-sys"]
 [dependencies]
 rocketmq-client-sys = { path = "rocketmq-client-sys" }
 
-thiserror = "1.0.28"
+thiserror = "1"
+crossbeam-channel = "0.5"
+once_cell = "1.8"

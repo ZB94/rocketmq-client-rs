@@ -14,6 +14,8 @@ pub struct MessageExt {
     ptr: *mut CMessageExt,
 }
 
+unsafe impl Send for MessageExt {}
+
 impl std::fmt::Debug for MessageExt {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         fmt.debug_struct("MessageExt")
