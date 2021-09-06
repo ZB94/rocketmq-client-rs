@@ -5,8 +5,8 @@ pub use error::MessageError;
 pub use ext::MessageExt;
 use rocketmq_client_sys::*;
 
-mod error;
-mod ext;
+pub mod error;
+pub mod ext;
 
 #[derive(Debug, Clone, Default)]
 pub struct Message {

@@ -8,7 +8,7 @@ use crate::consumer::MessageModel;
 use crate::consumer::push::error::PushConsumerError;
 use crate::consumer::push::PushConsumer;
 use crate::LogLevel;
-use crate::message::MessageExt;
+use crate::message::ext::MessageExtPtr;
 
 use super::CB_INFO;
 
@@ -21,6 +21,7 @@ pub enum PushConsumerType {
 pub struct PushConsumerBuilder {
     ty: PushConsumerType,
     group: String,
+    keys: Vec<String>,
     address: Vec<String>,
     domain: Option<String>,
     thread_count: Option<i32>,
@@ -35,10 +36,11 @@ pub struct PushConsumerBuilder {
 
 
 impl PushConsumerBuilder {
-    pub fn new(ty: PushConsumerType, group: &str) -> Self {
+    pub fn new(ty: PushConsumerType, group: &str, property_keys: Vec<String>) -> Self {
         Self {
             ty,
             group: group.to_string(),
+            keys: property_keys,
             address: vec![],
             domain: None,
             thread_count: None,
@@ -115,7 +117,7 @@ impl PushConsumerBuilder {
         };
 
         CB_INFO.write().unwrap()
-            .insert(c.ptr as usize, sender);
+            .insert(c.ptr as usize, (self.keys, sender));
 
         let address = CString::new(self.address.join(";"))?;
         unsafe { SetPushConsumerNameServerAddress(c.ptr, address.as_ptr()) };
@@ -171,8 +173,7 @@ impl PushConsumerBuilder {
             unsafe { SetPushConsumerMessageModel(c.ptr, model as u32) };
         }
 
-        #[allow(non_upper_case_globals)]
-            let t = if self.trace {
+        let t = if self.trace {
             _CTraceModel__OPEN
         } else {
             _CTraceModel__CLOSE
@@ -196,11 +197,13 @@ impl PushConsumerBuilder {
 
 
 unsafe extern "C" fn message_callback(c: *mut CPushConsumer, msg: *mut CMessageExt) -> i32 {
-    if let Ok(Some(sender)) = CB_INFO.read().map(|m| m.get(&(c as usize)).cloned()) {
-        let msg = MessageExt::new(msg);
-        let _ = sender.send(msg);
-        E_CConsumeStatus_E_CONSUME_SUCCESS as i32
-    } else {
-        E_CConsumeStatus_E_RECONSUME_LATER as i32
+    if let Ok(m) = CB_INFO.read() {
+        if let Some((k, s)) = m.get(&(c as usize)) {
+            let msg = MessageExtPtr::new(msg).to_message_ext(&k);
+            return s.send(msg)
+                .map(|_| E_CConsumeStatus_E_CONSUME_SUCCESS as i32)
+                .unwrap_or(E_CConsumeStatus_E_RECONSUME_LATER as i32);
+        }
     }
+    E_CConsumeStatus_E_RECONSUME_LATER as i32
 }

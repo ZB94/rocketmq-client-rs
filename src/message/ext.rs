@@ -2,27 +2,34 @@ use std::ffi::CString;
 
 use rocketmq_client_sys::*;
 
-use crate::message::MessageError;
 use crate::utils::from_c_str;
 
-/// 不要手动初始化该结构体
+use super::Message;
+
+#[derive(Debug, Clone)]
 pub struct MessageExt {
-    id: String,
-    topic: String,
-    keys: String,
-    body: String,
+    pub id: String,
+    pub queue_id: i32,
+    pub reconsume_times: i32,
+    pub store_size: i32,
+    pub born_timestamp: i64,
+    pub store_timestamp: i64,
+    pub queue_offset: i64,
+    pub commit_log_offset: i64,
+    pub prepared_transaction_offset: i64,
+
+    pub message: Message,
+}
+
+pub(crate) struct MessageExtPtr {
     ptr: *mut CMessageExt,
 }
 
-unsafe impl Send for MessageExt {}
 
-impl std::fmt::Debug for MessageExt {
+impl std::fmt::Debug for MessageExtPtr {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         fmt.debug_struct("MessageExt")
             .field("id", &self.id())
-            .field("topic", &self.topic())
-            .field("keys", &self.keys())
-            .field("body", &self.body())
             .field("queue_id", &self.queue_id())
             .field("reconsume_times", &self.reconsume_times())
             .field("store_size", &self.store_size())
@@ -31,63 +38,76 @@ impl std::fmt::Debug for MessageExt {
             .field("queue_offset", &self.queue_offset())
             .field("commit_log_offset", &self.commit_log_offset())
             .field("prepared_transaction_offset", &self.prepared_transaction_offset())
+
+            .field("topic", &self.topic())
+            .field("tags", &self.tags())
+            .field("keys", &self.keys())
+            .field("body", &self.body())
+            .field("delay_time_level", &self.delay_time_level())
             .field("property", &format_args!("..."))
             .finish()
     }
 }
 
-impl MessageExt {
-    pub fn topic(&self) -> &str {
-        &self.topic
-    }
-    pub fn keys(&self) -> &str {
-        &self.keys
-    }
-    pub fn body(&self) -> &str {
-        &self.body
-    }
-    pub fn id(&self) -> &str {
-        &self.id
+
+impl MessageExtPtr {
+    pub fn to_message_ext(&self, property_keys: &[String]) -> MessageExt {
+        MessageExt {
+            id: self.id(),
+            queue_id: self.queue_id(),
+            reconsume_times: self.reconsume_times(),
+            store_size: self.store_size(),
+            born_timestamp: self.born_timestamp(),
+            store_timestamp: self.store_timestamp(),
+            queue_offset: self.queue_offset(),
+            commit_log_offset: self.commit_log_offset(),
+            prepared_transaction_offset: self.prepared_transaction_offset(),
+            message: Message {
+                topic: self.topic(),
+                tags: self.tags(),
+                keys: self.keys(),
+                body: self.body(),
+                delay_time_level: self.delay_time_level(),
+                property: property_keys.iter()
+                    .map(|k| (k.clone(), self.property(k.as_str()).unwrap_or_default()))
+                    .collect(),
+            },
+        }
     }
 }
 
-
-impl MessageExt {
+impl MessageExtPtr {
     pub(crate) fn new(ptr: *mut CMessageExt) -> Self {
         assert!(!ptr.is_null());
-        let mut r = Self {
-            topic: "".to_string(),
-            keys: "".to_string(),
-            body: "".to_string(),
-            id: "".to_string(),
-            ptr,
-        };
-        r.topic = r.c_topic();
-        r.keys = r.c_keys();
-        r.body = r.c_body();
-        r.id = r.c_id();
-        r
+        Self { ptr }
     }
 
-    fn c_topic(&self) -> String {
+    pub fn topic(&self) -> String {
         from_c_str(unsafe { GetMessageTags(self.ptr) }).unwrap_or_default()
     }
 
-    fn c_keys(&self) -> String {
+    pub fn tags(&self) -> String {
+        from_c_str(unsafe { GetMessageTags(self.ptr) }).unwrap_or_default()
+    }
+
+    pub fn keys(&self) -> String {
         from_c_str(unsafe { GetMessageKeys(self.ptr) }).unwrap_or_default()
     }
 
-    fn c_body(&self) -> String {
+    pub fn body(&self) -> String {
         from_c_str(unsafe { GetMessageBody(self.ptr) }).unwrap_or_default()
     }
 
-    pub fn property(&self, key: &str) -> Result<Option<String>, MessageError> {
-        let key = CString::new(key)?;
-        Ok(from_c_str(unsafe { GetMessageProperty(self.ptr, key.as_ptr()) }))
+    pub fn property(&self, key: &str) -> Option<String> {
+        if let Ok(key) = CString::new(key) {
+            from_c_str(unsafe { GetMessageProperty(self.ptr, key.as_ptr()) })
+        } else {
+            None
+        }
     }
 
     /// message_id
-    fn c_id(&self) -> String {
+    pub fn id(&self) -> String {
         from_c_str(unsafe { GetMessageId(self.ptr) }).unwrap_or_default()
     }
 

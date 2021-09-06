@@ -15,7 +15,7 @@ use crate::utils::from_c_str;
 mod builder;
 pub mod error;
 
-static CB_INFO: Lazy<RwLock<HashMap<usize, Sender<MessageExt>>>> = Lazy::new(|| Default::default());
+static CB_INFO: Lazy<RwLock<HashMap<usize, (Vec<String>, Sender<MessageExt>)>>> = Lazy::new(|| Default::default());
 
 pub struct PushConsumer {
     ptr: *mut CPushConsumer,
@@ -24,8 +24,8 @@ pub struct PushConsumer {
 }
 
 impl PushConsumer {
-    pub fn new(ty: PushConsumerType, group: &str) -> PushConsumerBuilder {
-        PushConsumerBuilder::new(ty, group)
+    pub fn new(ty: PushConsumerType, group: &str, property_keys: Vec<String>) -> PushConsumerBuilder {
+        PushConsumerBuilder::new(ty, group, property_keys)
     }
 
     pub fn version(&self) -> String {

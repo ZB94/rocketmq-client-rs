@@ -94,8 +94,7 @@ impl ProducerBuilder {
             ProducerError::check(unsafe { SetProducerMaxMessageSize(p.ptr, size) })?;
         }
 
-        #[allow(non_upper_case_globals)]
-            let t = if self.trace {
+        let t = if self.trace {
             _CTraceModel__OPEN
         } else {
             _CTraceModel__CLOSE
