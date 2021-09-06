@@ -1,3 +1,14 @@
+pub use pull::{
+    error::{
+        PullConsumerError,
+        PullConsumerErrorCode,
+    },
+    MessageQueue,
+    PullConsumer,
+    PullConsumerBuilder,
+    PullResult,
+    PullStatus,
+};
 pub use push::{
     error::{
         PushConsumerError,
