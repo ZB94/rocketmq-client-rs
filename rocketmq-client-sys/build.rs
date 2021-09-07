@@ -8,5 +8,7 @@ fn main() {
     println!("cargo:rustc-link-lib=static=rocketmq");
     println!("cargo:rustc-link-lib=pthread");
     println!("cargo:rustc-link-lib=z");
+    println!("cargo:rustc-link-lib=dl");
     println!("cargo:rustc-link-lib=rt");
+    println!("cargo:rustc-link-lib=stdc++");
 }
