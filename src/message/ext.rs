@@ -83,7 +83,7 @@ impl MessageExtPtr {
     }
 
     pub fn topic(&self) -> String {
-        from_c_str(unsafe { GetMessageTags(self.ptr) }).unwrap_or_default()
+        from_c_str(unsafe { GetMessageTopic(self.ptr) }).unwrap_or_default()
     }
 
     pub fn tags(&self) -> String {

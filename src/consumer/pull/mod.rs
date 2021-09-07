@@ -43,12 +43,9 @@ impl PullConsumer {
             )
         })?;
 
-        self.message_queue_list = unsafe {
-            std::slice::from_raw_parts(&self.mq_list, self.mq_size as usize)
-                .into_iter()
-                .map(|ptr| MessageQueue { ptr: *ptr as *const _ })
-                .collect()
-        };
+        self.message_queue_list = (0..self.mq_size as isize)
+            .map(|idx| MessageQueue { ptr: unsafe { self.mq_list.offset(idx) } as *const _ })
+            .collect();
 
         Ok(())
     }
