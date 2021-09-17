@@ -1,7 +1,4 @@
-#[cfg(feature = "generated")]
 extern crate rocketmq_client_sys;
-#[cfg(feature = "autogen")]
-extern crate rocketmq_client_sys_autogen as rocketmq_client_sys;
 #[macro_use]
 extern crate thiserror;
 
