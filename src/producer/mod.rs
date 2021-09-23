@@ -86,10 +86,10 @@ impl Producer {
 
 impl Producer {
     /// **警告：** 该方法有可能发生内存泄露
-    pub fn send_async<F: FnOnce(Result<SendResult, ProducerError>)>(&self, msg: Message, callback: F) -> Result<(), ProducerError> {
+    pub unsafe fn send_async<F: FnOnce(Result<SendResult, ProducerError>)>(&self, msg: Message, callback: F) -> Result<(), ProducerError> {
         let msg = msg.to_c()?;
         let cb = Box::into_raw(Box::new(Box::new(callback)));
-        let r = ProducerError::check(unsafe {
+        let r = ProducerError::check(
             SendAsync(
                 self.ptr,
                 msg,
@@ -97,11 +97,11 @@ impl Producer {
                 Some(on_send_exception::<F>),
                 cb as *mut c_void,
             )
-        });
+        );
 
         if r.is_err() {
             Message::drop_c(msg);
-            unsafe { Box::from_raw(cb); }
+            Box::from_raw(cb);
         }
 
         r
