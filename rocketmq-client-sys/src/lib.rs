@@ -2,7 +2,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-#[cfg(not(feature = "bindgen"))]
+#[cfg(not(feature = "generate"))]
 include!("../gen.rs");
 
 #[cfg(feature = "generate")]
