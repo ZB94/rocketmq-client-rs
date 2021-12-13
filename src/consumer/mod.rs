@@ -1,5 +1,5 @@
 pub use pull::{
-    MessageQueue,
+    MessageQueue, MessageQueueList,
     PullConsumer,
     PullConsumerBuilder,
     PullResult,

@@ -1,5 +1,4 @@
 use std::ffi::CString;
-use std::ptr::null_mut;
 
 use rocketmq_client_sys::*;
 
@@ -43,9 +42,6 @@ impl PullConsumerBuilder {
         let group = CString::new(self.group.as_str())?;
         let c = PullConsumer {
             pull_consumer: unsafe { CreatePullConsumer(group.as_ptr()) },
-            mq_list: null_mut(),
-            mq_size: 0,
-            message_queue_list: vec![],
         };
 
         let address = CString::new(self.address.join(";").as_str())?;
