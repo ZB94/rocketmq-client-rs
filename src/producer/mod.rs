@@ -119,12 +119,11 @@ impl Producer {
 
 impl Producer {
     /// 调用之后如果再调用其他方法将会返回错误代码为[`error::ProducerErrorCode::NulError`]的错误
-    pub fn shutdown(&mut self) -> Result<(), ProducerError> {
-        let ptr = self.ptr.load(Ordering::Acquire);
+    pub fn shutdown(&self) -> Result<(), ProducerError> {
+        let ptr = self.ptr.swap(null_mut(), Ordering::Relaxed);
         if ptr.is_null() {
             Ok(())
         } else {
-            self.ptr.store(null_mut(), Ordering::Release);
             ProducerError::check(unsafe { ShutdownProducer(ptr) })
         }
     }
@@ -144,7 +143,6 @@ impl Drop for Producer {
     fn drop(&mut self) {
         let mut counter = self.counter.lock().unwrap();
         if *counter == 1 {
-            drop(counter);
             let _ = self.shutdown();
         } else {
             *counter -= 1;
