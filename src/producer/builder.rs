@@ -1,4 +1,5 @@
 use std::ffi::CString;
+use std::sync::atomic::Ordering;
 
 use rocketmq_client_sys::*;
 
@@ -44,21 +45,22 @@ impl ProducerBuilder {
             ProducerType::Default => unsafe { CreateProducer(group.as_ptr()) },
             ProducerType::Orderly => unsafe { CreateOrderlyProducer(group.as_ptr()) },
         };
-        let p = Producer { ptr };
+        let p = Producer::from_ptr(ptr);
+        let ptr = p.ptr.load(Ordering::Relaxed);
 
         if self.name_server_address.len() > 0 {
             let address = CString::new(self.name_server_address.join(";"))?;
-            ProducerError::check(unsafe { SetProducerNameServerAddress(p.ptr, address.as_ptr()) })?;
+            ProducerError::check(unsafe { SetProducerNameServerAddress(ptr, address.as_ptr()) })?;
         }
 
         if let Some(domain) = self.name_server_domain {
             let domain = CString::new(domain.as_str())?;
-            ProducerError::check(unsafe { SetProducerNameServerDomain(p.ptr, domain.as_ptr()) })?;
+            ProducerError::check(unsafe { SetProducerNameServerDomain(ptr, domain.as_ptr()) })?;
         }
 
         if let Some(name) = self.instance_name {
             let name = CString::new(name.as_str())?;
-            ProducerError::check(unsafe { SetProducerInstanceName(p.ptr, name.as_ptr()) })?;
+            ProducerError::check(unsafe { SetProducerInstanceName(ptr, name.as_ptr()) })?;
         }
 
         if let Some((access_key, secret, ons_channel)) = self.session_credentials {
@@ -68,7 +70,7 @@ impl ProducerBuilder {
 
             ProducerError::check(unsafe {
                 SetProducerSessionCredentials(
-                    p.ptr,
+                    ptr,
                     access_key.as_ptr(), secret_key.as_ptr(), ons_channel.as_ptr())
             })?;
         }
@@ -77,21 +79,21 @@ impl ProducerBuilder {
             let level = level as u32;
             let path = CString::new(path.as_str())?;
 
-            ProducerError::check(unsafe { SetProducerLogPath(p.ptr, path.as_ptr()) })?;
-            ProducerError::check(unsafe { SetProducerLogFileNumAndSize(p.ptr, num, size) })?;
-            ProducerError::check(unsafe { SetProducerLogLevel(p.ptr, level) })?;
+            ProducerError::check(unsafe { SetProducerLogPath(ptr, path.as_ptr()) })?;
+            ProducerError::check(unsafe { SetProducerLogFileNumAndSize(ptr, num, size) })?;
+            ProducerError::check(unsafe { SetProducerLogLevel(ptr, level) })?;
         }
 
         if let Some(timeout) = self.send_timeout {
-            ProducerError::check(unsafe { SetProducerSendMsgTimeout(p.ptr, timeout) })?;
+            ProducerError::check(unsafe { SetProducerSendMsgTimeout(ptr, timeout) })?;
         }
 
         if let Some(level) = self.compress_level {
-            ProducerError::check(unsafe { SetProducerCompressLevel(p.ptr, level) })?;
+            ProducerError::check(unsafe { SetProducerCompressLevel(ptr, level) })?;
         }
 
         if let Some(size) = self.max_message_size {
-            ProducerError::check(unsafe { SetProducerMaxMessageSize(p.ptr, size) })?;
+            ProducerError::check(unsafe { SetProducerMaxMessageSize(ptr, size) })?;
         }
 
         let t = if self.trace {
@@ -99,9 +101,9 @@ impl ProducerBuilder {
         } else {
             _CTraceModel__CLOSE
         };
-        ProducerError::check(unsafe { SetProducerMessageTrace(p.ptr, t) })?;
+        ProducerError::check(unsafe { SetProducerMessageTrace(ptr, t) })?;
 
-        ProducerError::check(unsafe { StartProducer(p.ptr) })?;
+        ProducerError::check(unsafe { StartProducer(ptr) })?;
 
         Ok(p)
     }
