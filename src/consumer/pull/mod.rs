@@ -1,5 +1,7 @@
 use std::ffi::CString;
 use std::ptr::null_mut;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 pub use builder::PullConsumerBuilder;
 pub use message_queue::{MessageQueue, MessageQueueList};
@@ -15,7 +17,8 @@ mod message_queue;
 pub mod error;
 
 pub struct PullConsumer {
-    pull_consumer: *mut CPullConsumer,
+    ptr: Arc<AtomicPtr<CPullConsumer>>,
+    counter: Arc<Mutex<usize>>,
 }
 
 impl PullConsumer {
@@ -23,17 +26,26 @@ impl PullConsumer {
         PullConsumerBuilder::new(group)
     }
 
+    fn from_ptr(ptr: *mut CPullConsumer) -> Self {
+        Self {
+            ptr: Arc::new(AtomicPtr::new(ptr)),
+            counter: Arc::new(Mutex::new(1)),
+        }
+    }
+
     pub fn version(&self) -> String {
-        from_c_str(unsafe { ShowPullConsumerVersion(self.pull_consumer) }).unwrap_or_default()
+        from_c_str(unsafe { ShowPullConsumerVersion(self.ptr.load(Ordering::Relaxed)) })
+            .unwrap_or_default()
     }
 
     pub fn fetch_mq_list(&mut self, topic: &str) -> Result<MessageQueueList, PullConsumerError> {
         let mut ptr = null_mut();
         let mut size = 0;
         let topic = CString::new(topic)?;
+
         PullConsumerError::check(unsafe {
             FetchSubscriptionMessageQueues(
-                self.pull_consumer,
+                self.ptr.load(Ordering::Relaxed),
                 topic.as_ptr(),
                 &mut ptr,
                 &mut size,
@@ -49,20 +61,47 @@ impl PullConsumer {
         expression: &str,
         offset: i64,
         max_nums: i32,
-        property_keys: &[String]
+        property_keys: &[String],
     ) -> Result<PullResult, PullConsumerError> {
         let expression = CString::new(expression)?;
-        let cpr = unsafe { Pull(self.pull_consumer, mq.ptr, expression.as_ptr(), offset, max_nums) };
+
+        let cpr = unsafe {
+            Pull(
+                self.ptr.load(Ordering::Relaxed),
+                mq.ptr, expression.as_ptr(),
+                offset,
+                max_nums,
+            )
+        };
         let pr = PullResult::new(&cpr, property_keys);
+
         unsafe { ReleasePullResult(cpr) };
+
         Ok(pr)
     }
 }
 
+impl Clone for PullConsumer {
+    fn clone(&self) -> Self {
+        *self.counter.lock().unwrap() += 1;
+        Self {
+            ptr: self.ptr.clone(),
+            counter: self.counter.clone(),
+        }
+    }
+}
 
 impl Drop for PullConsumer {
     fn drop(&mut self) {
-        unsafe { ShutdownPullConsumer(self.pull_consumer) };
-        unsafe { DestroyPullConsumer(self.pull_consumer) };
+        let mut counter = self.counter.lock().unwrap();
+        if *counter == 1 {
+            let ptr = self.ptr.swap(null_mut(), Ordering::Relaxed);
+            if !ptr.is_null() {
+                unsafe { ShutdownPullConsumer(ptr) };
+                unsafe { DestroyPullConsumer(ptr) };
+            }
+        } else {
+            *counter -= 1;
+        }
     }
 }
