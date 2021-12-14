@@ -1,5 +1,5 @@
 use std::ffi::CString;
-use std::ptr::null_mut;
+use std::sync::atomic::Ordering;
 
 use rocketmq_client_sys::*;
 
@@ -41,19 +41,17 @@ impl PullConsumerBuilder {
 
     pub fn start(self) -> Result<PullConsumer, PullConsumerError> {
         let group = CString::new(self.group.as_str())?;
-        let c = PullConsumer {
-            pull_consumer: unsafe { CreatePullConsumer(group.as_ptr()) },
-            mq_list: null_mut(),
-            mq_size: 0,
-            message_queue_list: vec![],
-        };
+        let c = PullConsumer::from_ptr(unsafe {
+            CreatePullConsumer(group.as_ptr())
+        });
+        let ptr = c.ptr.load(Ordering::Relaxed);
 
         let address = CString::new(self.address.join(";").as_str())?;
-        unsafe { SetPullConsumerNameServerAddress(c.pull_consumer, address.as_ptr()) };
+        unsafe { SetPullConsumerNameServerAddress(ptr, address.as_ptr()) };
 
         if let Some(domain) = self.domain {
             let domain = CString::new(domain.as_str())?;
-            unsafe { SetPullConsumerNameServerDomain(c.pull_consumer, domain.as_ptr()) };
+            unsafe { SetPullConsumerNameServerDomain(ptr, domain.as_ptr()) };
         }
 
         if let Some((access_key, secret_key, channel)) = self.session_credentials {
@@ -62,7 +60,7 @@ impl PullConsumerBuilder {
             let channel = CString::new(channel.as_str())?;
             unsafe {
                 SetPullConsumerSessionCredentials(
-                    c.pull_consumer,
+                    ptr,
                     access_key.as_ptr(),
                     secret_key.as_ptr(),
                     channel.as_ptr(),
@@ -70,7 +68,7 @@ impl PullConsumerBuilder {
             };
         }
 
-        PullConsumerError::check(unsafe { StartPullConsumer(c.pull_consumer) })?;
+        PullConsumerError::check(unsafe { StartPullConsumer(ptr) })?;
         Ok(c)
     }
 }

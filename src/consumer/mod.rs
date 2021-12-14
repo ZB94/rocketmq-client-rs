@@ -1,19 +1,11 @@
 pub use pull::{
-    error::{
-        PullConsumerError,
-        PullConsumerErrorCode,
-    },
-    MessageQueue,
+    MessageQueue, MessageQueueList,
     PullConsumer,
     PullConsumerBuilder,
     PullResult,
     PullStatus,
 };
 pub use push::{
-    error::{
-        PushConsumerError,
-        PushConsumerReceiveError,
-    },
     PushConsumer,
     PushConsumerBuilder,
     PushConsumerType,

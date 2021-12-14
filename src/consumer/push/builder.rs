@@ -1,4 +1,5 @@
 use std::ffi::CString;
+use std::sync::atomic::Ordering;
 
 use crossbeam_channel::unbounded;
 
@@ -110,41 +111,42 @@ impl PushConsumerBuilder {
         let group = CString::new(self.group.as_str())?;
         let (sender, receiver) = unbounded();
 
-        let c = PushConsumer {
-            ptr: unsafe { CreatePushConsumer(group.as_ptr()) },
-            ty: self.ty,
+        let c = PushConsumer::from_ptr(
+            unsafe { CreatePushConsumer(group.as_ptr()) },
+            self.ty,
             receiver,
-        };
+        );
+        let ptr = c.ptr.load(Ordering::Relaxed);
 
         CB_INFO.write().unwrap()
-            .insert(c.ptr as usize, (self.keys, sender));
+            .insert(ptr as usize, (self.keys, sender));
 
         let address = CString::new(self.address.join(";"))?;
-        unsafe { SetPushConsumerNameServerAddress(c.ptr, address.as_ptr()) };
+        unsafe { SetPushConsumerNameServerAddress(ptr, address.as_ptr()) };
 
         if let Some(domain) = self.domain {
             let domain = CString::new(domain.as_str())?;
-            unsafe { SetPushConsumerNameServerDomain(c.ptr, domain.as_ptr()) };
+            unsafe { SetPushConsumerNameServerDomain(ptr, domain.as_ptr()) };
         }
 
         if let Some(count) = self.thread_count {
-            unsafe { SetPushConsumerThreadCount(c.ptr, count) };
+            unsafe { SetPushConsumerThreadCount(ptr, count) };
         }
 
         if let Some(size) = self.message_batch_max_size {
-            unsafe { SetPushConsumerMessageBatchMaxSize(c.ptr, size) };
+            unsafe { SetPushConsumerMessageBatchMaxSize(ptr, size) };
         }
 
         if let Some(name) = self.instant_name {
             let name = CString::new(name)?;
-            unsafe { SetPushConsumerInstanceName(c.ptr, name.as_ptr()) };
+            unsafe { SetPushConsumerInstanceName(ptr, name.as_ptr()) };
         }
 
         if let Some((mb, size)) = self.max_message_cache_size {
             if mb {
-                unsafe { SetPushConsumerMaxCacheMessageSizeInMb(c.ptr, size) };
+                unsafe { SetPushConsumerMaxCacheMessageSizeInMb(ptr, size) };
             } else {
-                unsafe { SetPushConsumerMaxCacheMessageSize(c.ptr, size) };
+                unsafe { SetPushConsumerMaxCacheMessageSize(ptr, size) };
             }
         }
 
@@ -154,7 +156,7 @@ impl PushConsumerBuilder {
             let channel = CString::new(channel.as_str())?;
             unsafe {
                 SetPushConsumerSessionCredentials(
-                    c.ptr,
+                    ptr,
                     access_key.as_ptr(),
                     secret_key.as_ptr(),
                     channel.as_ptr(),
@@ -164,13 +166,13 @@ impl PushConsumerBuilder {
 
         if let Some((level, size, num, path)) = self.log {
             let path = CString::new(path.as_str())?;
-            unsafe { SetPushConsumerLogPath(c.ptr, path.as_ptr()) };
-            unsafe { SetPushConsumerLogFileNumAndSize(c.ptr, num, size) };
-            unsafe { SetPushConsumerLogLevel(c.ptr, level as u32) };
+            unsafe { SetPushConsumerLogPath(ptr, path.as_ptr()) };
+            unsafe { SetPushConsumerLogFileNumAndSize(ptr, num, size) };
+            unsafe { SetPushConsumerLogLevel(ptr, level as u32) };
         }
 
         if let Some(model) = self.message_model {
-            unsafe { SetPushConsumerMessageModel(c.ptr, model as u32) };
+            unsafe { SetPushConsumerMessageModel(ptr, model as u32) };
         }
 
         let t = if self.trace {
@@ -178,18 +180,18 @@ impl PushConsumerBuilder {
         } else {
             _CTraceModel__CLOSE
         };
-        unsafe { SetPushConsumerMessageTrace(c.ptr, t) };
+        unsafe { SetPushConsumerMessageTrace(ptr, t) };
 
         let topic = CString::new(topic)?;
         let expression = CString::new(expression)?;
-        unsafe { Subscribe(c.ptr, topic.as_ptr(), expression.as_ptr()) };
+        unsafe { Subscribe(ptr, topic.as_ptr(), expression.as_ptr()) };
 
         match self.ty {
-            PushConsumerType::Default => unsafe { RegisterMessageCallback(c.ptr, Some(message_callback)) },
-            PushConsumerType::Orderly => unsafe { RegisterMessageCallbackOrderly(c.ptr, Some(message_callback)) },
+            PushConsumerType::Default => unsafe { RegisterMessageCallback(ptr, Some(message_callback)) },
+            PushConsumerType::Orderly => unsafe { RegisterMessageCallbackOrderly(ptr, Some(message_callback)) },
         };
 
-        PushConsumerError::check(unsafe { StartPushConsumer(c.ptr) })?;
+        PushConsumerError::check(unsafe { StartPushConsumer(ptr) })?;
 
         Ok(c)
     }

@@ -1,8 +1,10 @@
 use std::ffi::CString;
 use std::ptr::null_mut;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 pub use builder::PullConsumerBuilder;
-pub use message_queue::MessageQueue;
+pub use message_queue::{MessageQueue, MessageQueueList};
 pub use pull_result::{PullResult, PullStatus};
 use rocketmq_client_sys::*;
 
@@ -15,68 +17,91 @@ mod message_queue;
 pub mod error;
 
 pub struct PullConsumer {
-    pull_consumer: *mut CPullConsumer,
-    mq_list: *mut CMessageQueue,
-    mq_size: i32,
-    message_queue_list: Vec<MessageQueue>,
+    ptr: Arc<AtomicPtr<CPullConsumer>>,
+    counter: Arc<Mutex<usize>>,
 }
 
 impl PullConsumer {
-    pub fn new(group: &str) -> PullConsumerBuilder {
+    pub fn builder(group: &str) -> PullConsumerBuilder {
         PullConsumerBuilder::new(group)
     }
 
-    pub fn version(&self) -> String {
-        from_c_str(unsafe { ShowPullConsumerVersion(self.pull_consumer) }).unwrap_or_default()
+    fn from_ptr(ptr: *mut CPullConsumer) -> Self {
+        Self {
+            ptr: Arc::new(AtomicPtr::new(ptr)),
+            counter: Arc::new(Mutex::new(1)),
+        }
     }
 
-    pub fn fetch_mq_list(&mut self, topic: &str) -> Result<(), PullConsumerError> {
-        self.release_mq_list();
+    pub fn version(&self) -> String {
+        from_c_str(unsafe { ShowPullConsumerVersion(self.ptr.load(Ordering::Relaxed)) })
+            .unwrap_or_default()
+    }
 
+    pub fn fetch_mq_list(&mut self, topic: &str) -> Result<MessageQueueList, PullConsumerError> {
+        let mut ptr = null_mut();
+        let mut size = 0;
         let topic = CString::new(topic)?;
+
         PullConsumerError::check(unsafe {
             FetchSubscriptionMessageQueues(
-                self.pull_consumer,
+                self.ptr.load(Ordering::Relaxed),
                 topic.as_ptr(),
-                &mut self.mq_list,
-                &mut self.mq_size,
+                &mut ptr,
+                &mut size,
             )
         })?;
 
-        self.message_queue_list = (0..self.mq_size as isize)
-            .map(|idx| MessageQueue { ptr: unsafe { self.mq_list.offset(idx) } as *const _ })
-            .collect();
-
-        Ok(())
+        Ok(MessageQueueList::new(ptr, size as usize))
     }
 
-    pub fn mq_list(&self) -> &[MessageQueue] {
-        &self.message_queue_list
-    }
-
-    pub fn pull(&self, mq: &MessageQueue, expression: &str, offset: i64, max_nums: i32, property_keys: &[String]) -> Result<PullResult, PullConsumerError> {
+    pub fn pull(
+        &self,
+        mq: &MessageQueue,
+        expression: &str,
+        offset: i64,
+        max_nums: i32,
+        property_keys: &[String],
+    ) -> Result<PullResult, PullConsumerError> {
         let expression = CString::new(expression)?;
-        let cpr = unsafe { Pull(self.pull_consumer, mq.ptr, expression.as_ptr(), offset, max_nums) };
+
+        let cpr = unsafe {
+            Pull(
+                self.ptr.load(Ordering::Relaxed),
+                mq.ptr, expression.as_ptr(),
+                offset,
+                max_nums,
+            )
+        };
         let pr = PullResult::new(&cpr, property_keys);
+
         unsafe { ReleasePullResult(cpr) };
+
         Ok(pr)
     }
+}
 
-    fn release_mq_list(&mut self) {
-        self.message_queue_list.clear();
-        if !self.pull_consumer.is_null() {
-            unsafe { ReleaseSubscriptionMessageQueue(self.mq_list) };
-            self.mq_list = null_mut();
-            self.mq_size = 0;
+impl Clone for PullConsumer {
+    fn clone(&self) -> Self {
+        *self.counter.lock().unwrap() += 1;
+        Self {
+            ptr: self.ptr.clone(),
+            counter: self.counter.clone(),
         }
     }
 }
 
-
 impl Drop for PullConsumer {
     fn drop(&mut self) {
-        self.release_mq_list();
-        unsafe { ShutdownPullConsumer(self.pull_consumer) };
-        unsafe { DestroyPullConsumer(self.pull_consumer) };
+        let mut counter = self.counter.lock().unwrap();
+        if *counter == 1 {
+            let ptr = self.ptr.swap(null_mut(), Ordering::Relaxed);
+            if !ptr.is_null() {
+                unsafe { ShutdownPullConsumer(ptr) };
+                unsafe { DestroyPullConsumer(ptr) };
+            }
+        } else {
+            *counter -= 1;
+        }
     }
 }

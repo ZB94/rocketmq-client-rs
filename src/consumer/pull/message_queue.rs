@@ -1,6 +1,41 @@
+use std::ops::Deref;
+
 use rocketmq_client_sys::*;
 
 use crate::utils::from_c_str;
+
+pub struct MessageQueueList {
+    list: Vec<MessageQueue>,
+    ptr: *mut CMessageQueue,
+}
+
+impl MessageQueueList {
+    pub(crate) fn new(ptr: *mut CMessageQueue, size: usize) -> Self {
+        let mut list = Vec::with_capacity(size);
+        for i in 0..size as isize {
+            list.push(MessageQueue { ptr: unsafe { ptr.offset(i) } });
+        }
+        Self {
+            list,
+            ptr,
+        }
+    }
+}
+
+impl Deref for MessageQueueList {
+    type Target = Vec<MessageQueue>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.list
+    }
+}
+
+impl Drop for MessageQueueList {
+    fn drop(&mut self) {
+        self.list.clear();
+        unsafe { ReleaseSubscriptionMessageQueue(self.ptr) };
+    }
+}
 
 pub struct MessageQueue {
     pub(crate) ptr: *const CMessageQueue,
