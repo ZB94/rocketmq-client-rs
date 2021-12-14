@@ -22,7 +22,7 @@ pub struct PullConsumer {
 }
 
 impl PullConsumer {
-    pub fn new(group: &str) -> PullConsumerBuilder {
+    pub fn builder(group: &str) -> PullConsumerBuilder {
         PullConsumerBuilder::new(group)
     }
 

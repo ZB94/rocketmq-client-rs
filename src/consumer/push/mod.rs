@@ -25,7 +25,7 @@ pub struct PushConsumer {
 }
 
 impl PushConsumer {
-    pub fn new(ty: PushConsumerType, group: &str, property_keys: Vec<String>) -> PushConsumerBuilder {
+    pub fn builder(ty: PushConsumerType, group: &str, property_keys: Vec<String>) -> PushConsumerBuilder {
         PushConsumerBuilder::new(ty, group, property_keys)
     }
 

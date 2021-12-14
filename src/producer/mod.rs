@@ -35,7 +35,7 @@ pub struct Producer {
 }
 
 impl Producer {
-    pub fn new(group: &str) -> ProducerBuilder {
+    pub fn builder(group: &str) -> ProducerBuilder {
         ProducerBuilder::new(group)
     }
 
