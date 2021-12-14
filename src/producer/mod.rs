@@ -94,7 +94,7 @@ impl Producer {
 }
 
 impl Producer {
-    /// **警告：** 该方法有可能发生内存泄露
+    /// **警告：** 如果回调没有被触发将会发生内存泄漏
     pub unsafe fn send_async<F: FnOnce(Result<SendResult, ProducerError>)>(&self, msg: Message, callback: F) -> Result<(), ProducerError> {
         let msg = msg.to_c()?;
         let cb = Box::into_raw(Box::new(Box::new(callback)));
