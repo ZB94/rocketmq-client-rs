@@ -1,7 +1,7 @@
 use std::ffi::{c_void, CString};
 use std::ptr::null_mut;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 pub use builder::ProducerBuilder;
 use error::ProducerError;
@@ -31,7 +31,7 @@ impl Default for ProducerType {
 
 pub struct Producer {
     pub(crate) ptr: Arc<AtomicPtr<CProducer>>,
-    counter: Arc<Mutex<usize>>,
+    counter: Arc<AtomicUsize>,
 }
 
 impl Producer {
@@ -42,7 +42,7 @@ impl Producer {
     fn from_ptr(ptr: *mut CProducer) -> Self {
         Self {
             ptr: Arc::new(AtomicPtr::new(ptr)),
-            counter: Arc::new(Mutex::new(1)),
+            counter: Arc::new(AtomicUsize::new(1)),
         }
     }
 
@@ -94,7 +94,8 @@ impl Producer {
 }
 
 impl Producer {
-    /// **警告：** 如果回调没有被触发将会发生内存泄漏
+    /// # Safety
+    /// 如果回调没有被触发将会发生内存泄漏
     pub unsafe fn send_async<F: FnOnce(Result<SendResult, ProducerError>)>(&self, msg: Message, callback: F) -> Result<(), ProducerError> {
         let msg = msg.to_c()?;
         let cb = Box::into_raw(Box::new(Box::new(callback)));
@@ -131,7 +132,7 @@ impl Producer {
 
 impl Clone for Producer {
     fn clone(&self) -> Self {
-        *self.counter.lock().unwrap() += 1;
+        self.counter.fetch_add(1, Ordering::Release);
         Self {
             ptr: self.ptr.clone(),
             counter: self.counter.clone(),
@@ -141,11 +142,9 @@ impl Clone for Producer {
 
 impl Drop for Producer {
     fn drop(&mut self) {
-        let mut counter = self.counter.lock().unwrap();
-        if *counter == 1 {
+        let counter = self.counter.fetch_sub(1, Ordering::Release);
+        if counter == 1 {
             let _ = self.shutdown();
-        } else {
-            *counter -= 1;
         }
     }
 }

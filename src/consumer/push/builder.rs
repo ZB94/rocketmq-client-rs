@@ -203,7 +203,7 @@ impl PushConsumerBuilder {
 unsafe extern "C" fn message_callback(c: *mut CPushConsumer, msg: *mut CMessageExt) -> i32 {
     if let Ok(m) = CB_INFO.read() {
         if let Some((k, f)) = m.get(&(c as usize)) {
-            let msg = MessageExtPtr::new(msg).to_message_ext(&k);
+            let msg = MessageExtPtr::new(msg).to_message_ext(k);
             return f(msg) as i32;
         }
     }

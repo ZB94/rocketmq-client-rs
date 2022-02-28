@@ -78,7 +78,7 @@ impl Message {
             let msg = CreateMessage(topic.as_ptr());
             SetMessageTags(msg, tags.as_ptr());
             SetMessageKeys(msg, keys.as_ptr());
-            if self.body.len() > 0 {
+            if self.body.is_empty() {
                 SetByteMessageBody(msg, body.as_ptr(), body.as_bytes().len() as i32);
             }
 

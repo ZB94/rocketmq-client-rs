@@ -36,7 +36,7 @@ impl PullResult {
         let max_offset = pr.maxOffset;
         let message_found_list = unsafe {
             std::slice::from_raw_parts_mut(pr.msgFoundList, pr.size as usize)
-                .into_iter()
+                .iter_mut()
                 .map(|msg| MessageExtPtr::new(*msg).to_message_ext(property_key))
                 .collect::<Vec<_>>()
         };

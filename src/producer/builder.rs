@@ -48,7 +48,7 @@ impl ProducerBuilder {
         let p = Producer::from_ptr(ptr);
         let ptr = p.ptr.load(Ordering::Relaxed);
 
-        if self.name_server_address.len() > 0 {
+        if !self.name_server_address.is_empty() {
             let address = CString::new(self.name_server_address.join(";"))?;
             ProducerError::check(unsafe { SetProducerNameServerAddress(ptr, address.as_ptr()) })?;
         }

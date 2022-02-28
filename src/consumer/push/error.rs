@@ -1,7 +1,5 @@
 use std::ffi::NulError;
 
-pub use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
-
 use rocketmq_client_sys::*;
 
 use crate::utils::get_last_error;

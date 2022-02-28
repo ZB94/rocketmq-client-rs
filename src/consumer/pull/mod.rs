@@ -1,7 +1,7 @@
 use std::ffi::CString;
 use std::ptr::null_mut;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 pub use builder::PullConsumerBuilder;
 pub use message_queue::{MessageQueue, MessageQueueList};
@@ -18,7 +18,7 @@ pub mod error;
 
 pub struct PullConsumer {
     ptr: Arc<AtomicPtr<CPullConsumer>>,
-    counter: Arc<Mutex<usize>>,
+    counter: Arc<AtomicUsize>,
 }
 
 impl PullConsumer {
@@ -29,7 +29,7 @@ impl PullConsumer {
     fn from_ptr(ptr: *mut CPullConsumer) -> Self {
         Self {
             ptr: Arc::new(AtomicPtr::new(ptr)),
-            counter: Arc::new(Mutex::new(1)),
+            counter: Arc::new(AtomicUsize::new(1)),
         }
     }
 
@@ -83,7 +83,7 @@ impl PullConsumer {
 
 impl Clone for PullConsumer {
     fn clone(&self) -> Self {
-        *self.counter.lock().unwrap() += 1;
+        self.counter.fetch_add(1, Ordering::Release);
         Self {
             ptr: self.ptr.clone(),
             counter: self.counter.clone(),
@@ -93,15 +93,13 @@ impl Clone for PullConsumer {
 
 impl Drop for PullConsumer {
     fn drop(&mut self) {
-        let mut counter = self.counter.lock().unwrap();
-        if *counter == 1 {
+        let counter = self.counter.fetch_sub(1, Ordering::Release);
+        if counter == 1 {
             let ptr = self.ptr.swap(null_mut(), Ordering::Relaxed);
             if !ptr.is_null() {
                 unsafe { ShutdownPullConsumer(ptr) };
                 unsafe { DestroyPullConsumer(ptr) };
             }
-        } else {
-            *counter -= 1;
         }
     }
 }

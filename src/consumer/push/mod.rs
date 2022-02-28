@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ptr::null_mut;
-use std::sync::{Arc, Mutex, RwLock};
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 use once_cell::sync::Lazy;
 
@@ -14,7 +14,8 @@ use crate::utils::from_c_str;
 mod builder;
 pub mod error;
 
-static CB_INFO: Lazy<RwLock<HashMap<usize, (Vec<String>, Box<dyn Fn(MessageExt) -> PushConsumerResult + Send + Sync>)>>> = Lazy::new(|| Default::default());
+#[allow(clippy::type_complexity)]
+static CB_INFO: Lazy<RwLock<HashMap<usize, (Vec<String>, Box<dyn Fn(MessageExt) -> PushConsumerResult + Send + Sync>)>>> = Lazy::new(Default::default);
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum PushConsumerResult {
@@ -25,7 +26,7 @@ pub enum PushConsumerResult {
 pub struct PushConsumer {
     pub(crate) ptr: Arc<AtomicPtr<CPushConsumer>>,
     ty: PushConsumerType,
-    counter: Arc<Mutex<usize>>,
+    counter: Arc<AtomicUsize>,
 }
 
 impl PushConsumer {
@@ -37,7 +38,7 @@ impl PushConsumer {
         Self {
             ptr: Arc::new(AtomicPtr::new(ptr)),
             ty,
-            counter: Arc::new(Mutex::new(1)),
+            counter: Arc::new(AtomicUsize::new(1)),
         }
     }
 
@@ -49,7 +50,7 @@ impl PushConsumer {
 
 impl Clone for PushConsumer {
     fn clone(&self) -> Self {
-        *self.counter.lock().unwrap() += 1;
+        self.counter.fetch_add(1, Ordering::Release);
         Self {
             ptr: self.ptr.clone(),
             ty: self.ty,
@@ -60,8 +61,8 @@ impl Clone for PushConsumer {
 
 impl Drop for PushConsumer {
     fn drop(&mut self) {
-        let mut counter = self.counter.lock().unwrap();
-        if *counter == 1 {
+        let counter = self.counter.fetch_sub(1, Ordering::Release);
+        if counter == 1 {
             let ptr = self.ptr.swap(null_mut(), Ordering::Relaxed);
 
             if ptr.is_null() {
@@ -80,8 +81,6 @@ impl Drop for PushConsumer {
                 ShutdownPushConsumer(ptr);
                 DestroyPushConsumer(ptr);
             }
-        } else {
-            *counter -= 1;
         }
     }
 }
