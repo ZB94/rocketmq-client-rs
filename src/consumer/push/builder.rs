@@ -1,15 +1,14 @@
 use std::ffi::CString;
 use std::sync::atomic::Ordering;
 
-use crossbeam_channel::unbounded;
-
 use rocketmq_client_sys::*;
 
 use crate::consumer::MessageModel;
+use crate::consumer::push::{PushConsumer, PushConsumerResult};
 use crate::consumer::push::error::PushConsumerError;
-use crate::consumer::push::PushConsumer;
 use crate::LogLevel;
 use crate::message::ext::MessageExtPtr;
+use crate::message::MessageExt;
 
 use super::CB_INFO;
 
@@ -107,19 +106,22 @@ impl PushConsumerBuilder {
         self
     }
 
-    pub fn start(self, topic: &str, expression: &str) -> Result<PushConsumer, PushConsumerError> {
+    pub fn start<F: Fn(MessageExt) -> PushConsumerResult + Send + Sync + 'static>(
+        self,
+        topic: &str,
+        expression: &str,
+        on_message: F,
+    ) -> Result<PushConsumer, PushConsumerError> {
         let group = CString::new(self.group.as_str())?;
-        let (sender, receiver) = unbounded();
 
         let c = PushConsumer::from_ptr(
             unsafe { CreatePushConsumer(group.as_ptr()) },
             self.ty,
-            receiver,
         );
         let ptr = c.ptr.load(Ordering::Relaxed);
 
         CB_INFO.write().unwrap()
-            .insert(ptr as usize, (self.keys, sender));
+            .insert(ptr as usize, (self.keys, Box::new(on_message)));
 
         let address = CString::new(self.address.join(";"))?;
         unsafe { SetPushConsumerNameServerAddress(ptr, address.as_ptr()) };
@@ -200,11 +202,9 @@ impl PushConsumerBuilder {
 
 unsafe extern "C" fn message_callback(c: *mut CPushConsumer, msg: *mut CMessageExt) -> i32 {
     if let Ok(m) = CB_INFO.read() {
-        if let Some((k, s)) = m.get(&(c as usize)) {
+        if let Some((k, f)) = m.get(&(c as usize)) {
             let msg = MessageExtPtr::new(msg).to_message_ext(&k);
-            return s.send(msg)
-                .map(|_| E_CConsumeStatus_E_CONSUME_SUCCESS as i32)
-                .unwrap_or(E_CConsumeStatus_E_RECONSUME_LATER as i32);
+            return f(msg) as i32;
         }
     }
     E_CConsumeStatus_E_RECONSUME_LATER as i32

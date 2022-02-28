@@ -3,7 +3,6 @@ use std::ptr::null_mut;
 use std::sync::{Arc, Mutex, RwLock};
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use crossbeam_channel::{Receiver, Sender};
 use once_cell::sync::Lazy;
 
 pub use builder::{PushConsumerBuilder, PushConsumerType};
@@ -15,12 +14,17 @@ use crate::utils::from_c_str;
 mod builder;
 pub mod error;
 
-static CB_INFO: Lazy<RwLock<HashMap<usize, (Vec<String>, Sender<MessageExt>)>>> = Lazy::new(|| Default::default());
+static CB_INFO: Lazy<RwLock<HashMap<usize, (Vec<String>, Box<dyn Fn(MessageExt) -> PushConsumerResult + Send + Sync>)>>> = Lazy::new(|| Default::default());
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum PushConsumerResult {
+    ConsumeSuccess = E_CConsumeStatus_E_CONSUME_SUCCESS as isize,
+    ReconsumeLater = E_CConsumeStatus_E_RECONSUME_LATER as isize,
+}
 
 pub struct PushConsumer {
     pub(crate) ptr: Arc<AtomicPtr<CPushConsumer>>,
     ty: PushConsumerType,
-    receiver: Receiver<MessageExt>,
     counter: Arc<Mutex<usize>>,
 }
 
@@ -29,11 +33,10 @@ impl PushConsumer {
         PushConsumerBuilder::new(ty, group, property_keys)
     }
 
-    fn from_ptr(ptr: *mut CPushConsumer, ty: PushConsumerType, receiver: Receiver<MessageExt>) -> Self {
+    fn from_ptr(ptr: *mut CPushConsumer, ty: PushConsumerType) -> Self {
         Self {
             ptr: Arc::new(AtomicPtr::new(ptr)),
             ty,
-            receiver,
             counter: Arc::new(Mutex::new(1)),
         }
     }
@@ -41,10 +44,6 @@ impl PushConsumer {
     pub fn version(&self) -> String {
         from_c_str(unsafe { ShowPushConsumerVersion(self.ptr.load(Ordering::Relaxed)) })
             .unwrap_or_default()
-    }
-
-    pub fn receiver(&self) -> &Receiver<MessageExt> {
-        &self.receiver
     }
 }
 
@@ -54,7 +53,6 @@ impl Clone for PushConsumer {
         Self {
             ptr: self.ptr.clone(),
             ty: self.ty,
-            receiver: self.receiver.clone(),
             counter: self.counter.clone(),
         }
     }
